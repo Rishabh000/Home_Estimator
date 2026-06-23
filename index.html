@@ -507,6 +507,7 @@
     <div class="btn-row" id="smartChips" style="flex-wrap:wrap;margin-bottom:10px;"></div>
     <div id="smartStatus" class="text-muted" style="font-size:12px;margin-bottom:8px;"></div>
     <div id="smartResults"></div>
+    <button class="btn btn-brand btn-block" id="smartDoneBtn" style="margin-top:14px;">Done</button>
   </section>
 
   <!-- Generic prompt sheet (rename / new project) -->
@@ -1538,6 +1539,7 @@
       if (smartAddItem(id)){
         row.classList.add("added");
         row.querySelector(".sr-add").textContent = "✓";
+        smartAddedCount++;
         toast("Added: " + CATALOG[id].name, "ok");
       }
     }));
@@ -1545,9 +1547,10 @@
 
   /* ---- wire up ---- */
   const SMART_CHIPS = ["Furnace is dead","Carpet ruined","Roof is leaking","Cabinets are shot","Full bathroom gut","Old electrical panel","AC unit outside broken"];
-  let smartWired = false;
+  let smartWired = false, smartAddedCount = 0;
   function openSmartAdd(){
     openSheet("smartadd");
+    smartAddedCount = 0;
     if (!smartWired){
       smartWired = true;
       $("#smartChips").innerHTML = SMART_CHIPS.map(c => `<button class="smart-chip">${esc(c)}</button>`).join("");
@@ -1555,7 +1558,14 @@
         $("#smartInput").value = b.textContent; runSmartSearch();
       }));
       $("#smartInput").addEventListener("input", runSmartSearch);
+      $("#smartDoneBtn").addEventListener("click", () => {
+        closeSheet("smartadd");
+        showScreen("estimate");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        if (smartAddedCount > 0) toast(`Added ${smartAddedCount} item${smartAddedCount!==1?'s':''} to the estimate`, "ok");
+      });
     }
+    $("#smartInput").value = "";
     $("#smartResults").innerHTML = "";
     ensureSmartModel(); // background; keyword search works immediately meanwhile
     setTimeout(() => $("#smartInput").focus(), 250);
