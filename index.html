@@ -1,0 +1,1709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b1220" />
+  <meta name="description" content="Spark Homes mobile repair cost estimator" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Spark Estimate" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <title>Spark Homes — Repair Estimator</title>
+
+  <!-- Export libraries (cached by the service worker for offline use).
+       The TensorFlow.js model for AI Smart Add is loaded lazily on first use so
+       startup stays fast and the install stays light. -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+
+  <style>
+    :root {
+      --bg: #0b1220;
+      --bg-2: #0e1626;
+      --surface: #131d31;
+      --surface-2: #1a2740;
+      --border: #243450;
+      --text: #eef2f8;
+      --muted: #93a1ba;
+      --faint: #6b7a96;
+      --brand: #ff7a3d;
+      --brand-2: #e0521b;
+      --brand-soft: rgba(255,122,61,.14);
+      --ok: #34d399;
+      --ok-soft: rgba(52,211,153,.14);
+      --warn: #fbbf24;
+      --danger: #f87171;
+      --radius: 16px;
+      --radius-sm: 11px;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --nav-h: 64px;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 50% -10%, #15233c 0%, var(--bg) 60%) fixed;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      overscroll-behavior-y: none;
+      line-height: 1.45;
+    }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+    input, select { font-family: inherit; font-size: 16px; } /* 16px stops iOS zoom-on-focus */
+
+    /* ---------- Top App Bar ---------- */
+    .appbar {
+      position: sticky; top: 0; z-index: 40;
+      padding: calc(var(--safe-top) + 10px) 14px 10px;
+      background: rgba(11,18,32,.86);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
+    .appbar-row { display: flex; align-items: center; gap: 12px; }
+    .brand-mark { width: 34px; height: 34px; flex: 0 0 auto; border-radius: 9px; }
+    .appbar-titles { flex: 1; min-width: 0; }
+    .appbar-project {
+      font-weight: 700; font-size: 16px; letter-spacing: .2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .appbar-project .chev { color: var(--muted); font-size: 12px; }
+    .appbar-sub { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .total-pill {
+      flex: 0 0 auto; text-align: right;
+      background: var(--brand-soft); border: 1px solid rgba(255,122,61,.3);
+      padding: 6px 12px; border-radius: 12px;
+    }
+    .total-pill .lbl { font-size: 9.5px; text-transform: uppercase; letter-spacing: .8px; color: var(--brand); display: block; }
+    .total-pill .val { font-size: 17px; font-weight: 800; letter-spacing: .3px; }
+
+    /* progress */
+    .progress-wrap { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+    .progress-track { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+    .progress-fill { height: 100%; width: 0%; border-radius: 99px; background: linear-gradient(90deg, var(--brand-2), var(--brand)); transition: width .35s ease; }
+    .progress-label { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 96px; text-align: right; }
+
+    /* ---------- Layout ---------- */
+    .screen { padding: 14px 14px calc(var(--nav-h) + var(--safe-bottom) + 24px); max-width: 760px; margin: 0 auto; }
+    .screen[hidden] { display: none; }
+    .section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--faint); margin: 18px 4px 8px; font-weight: 700; }
+
+    /* ---------- Cards / Rooms ---------- */
+    .room {
+      background: linear-gradient(180deg, var(--surface), var(--bg-2));
+      border: 1px solid var(--border); border-radius: var(--radius);
+      margin-bottom: 12px; overflow: hidden; box-shadow: var(--shadow);
+    }
+    .room-head { display: flex; align-items: center; gap: 11px; padding: 14px; cursor: pointer; }
+    .room-icon {
+      width: 38px; height: 38px; border-radius: 11px; flex: 0 0 auto;
+      display: grid; place-items: center; font-size: 19px;
+      background: var(--surface-2); border: 1px solid var(--border);
+    }
+    .room-meta { flex: 1; min-width: 0; }
+    .room-name { font-weight: 700; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .room-stat { font-size: 12px; color: var(--muted); margin-top: 1px; }
+    .room-stat b { color: var(--brand); font-weight: 700; }
+    .room-caret { color: var(--muted); transition: transform .25s ease; font-size: 13px; }
+    .room.collapsed .room-caret { transform: rotate(-90deg); }
+    .room-body { padding: 0 12px 6px; }
+    .room.collapsed .room-body { display: none; }
+    .room-actions { display: flex; gap: 8px; padding: 4px 12px 14px; }
+
+    /* ---------- Groups ---------- */
+    .group { border-top: 1px solid var(--border); }
+    .group:first-child { border-top: none; }
+    .group-head { display: flex; align-items: center; gap: 9px; padding: 12px 4px; cursor: pointer; }
+    .group-dot { width: 9px; height: 9px; border-radius: 99px; background: var(--surface-2); border: 1.5px solid var(--faint); flex: 0 0 auto; transition: all .2s; }
+    .group.done .group-dot { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+    .group-name { flex: 1; font-weight: 600; font-size: 14.5px; }
+    .group-badge { font-size: 11px; color: var(--muted); }
+    .group-badge.cost { color: var(--brand); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .group-caret { color: var(--faint); font-size: 12px; transition: transform .2s; }
+    .group.collapsed .group-caret { transform: rotate(-90deg); }
+    .group-body { padding-bottom: 8px; }
+    .group.collapsed .group-body { display: none; }
+
+    /* No action needed */
+    .noaction {
+      display: flex; align-items: center; gap: 9px; padding: 9px 10px; margin: 2px 0 8px;
+      background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius-sm);
+      font-size: 13px; color: var(--muted);
+    }
+    .noaction.on { border-style: solid; border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
+    .noaction input { width: 18px; height: 18px; accent-color: var(--ok); }
+
+    /* ---------- Line items ---------- */
+    .item {
+      display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start;
+      padding: 9px 4px; border-top: 1px solid rgba(36,52,80,.5);
+    }
+    .item:first-of-type { border-top: none; }
+    .item.checked { background: rgba(255,122,61,.05); border-radius: 10px; }
+    .item-check { width: 21px; height: 21px; margin-top: 2px; accent-color: var(--brand); flex: 0 0 auto; }
+    .item-main { min-width: 0; }
+    .item-name { font-size: 14px; font-weight: 500; }
+    .item-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .price-btn { color: var(--brand); border: 1px solid rgba(255,122,61,.3); border-radius: 7px; padding: 1px 7px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+    .price-btn.overridden { background: var(--brand-soft); }
+    .unit-tag { background: var(--surface-2); padding: 1px 7px; border-radius: 7px; }
+    .item-del { color: var(--faint); font-size: 15px; padding: 2px 4px; }
+    .item-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .qty-row { display: flex; align-items: center; gap: 6px; }
+    .qty-btn { width: 30px; height: 30px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--border); font-size: 18px; font-weight: 700; color: var(--text); display: grid; place-items: center; line-height: 1; }
+    .qty-btn:active { background: var(--brand); border-color: var(--brand); }
+    .qty-input { width: 54px; height: 30px; text-align: center; border-radius: 9px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .line-total { font-size: 13px; font-weight: 700; color: var(--brand); font-variant-numeric: tabular-nums; min-height: 16px; }
+
+    /* ---------- Buttons ---------- */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 11px; padding: 11px 14px; font-weight: 600; font-size: 14px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); transition: transform .06s; }
+    .btn:active { transform: scale(.97); }
+    .btn-brand { background: linear-gradient(180deg, var(--brand), var(--brand-2)); border-color: transparent; color: #fff; box-shadow: 0 6px 18px rgba(224,82,27,.35); }
+    .btn-ghost { background: transparent; }
+    .btn-danger { color: var(--danger); border-color: rgba(248,113,113,.35); }
+    .btn-sm { padding: 7px 11px; font-size: 12.5px; border-radius: 9px; }
+    .btn-block { width: 100%; }
+    .btn-row { display: flex; gap: 8px; }
+
+    /* ---------- Bottom Nav ---------- */
+    .nav {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+      height: calc(var(--nav-h) + var(--safe-bottom)); padding-bottom: var(--safe-bottom);
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      background: rgba(14,22,38,.92); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border-top: 1px solid var(--border);
+    }
+    .nav-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--faint); font-size: 10.5px; font-weight: 600; }
+    .nav-btn svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; }
+    .nav-btn.active { color: var(--brand); }
+
+    /* ---------- Modal / Sheet ---------- */
+    .scrim { position: fixed; inset: 0; background: rgba(3,7,15,.62); z-index: 60; opacity: 0; pointer-events: none; transition: opacity .25s; }
+    .scrim.open { opacity: 1; pointer-events: auto; }
+    .sheet {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 70;
+      background: var(--bg-2); border-top-left-radius: 22px; border-top-right-radius: 22px;
+      border: 1px solid var(--border); border-bottom: none;
+      max-height: 88vh; overflow-y: auto; transform: translateY(102%); transition: transform .3s cubic-bezier(.2,.8,.2,1);
+      padding: 8px 16px calc(20px + var(--safe-bottom));
+    }
+    .sheet.open { transform: translateY(0); }
+    .sheet-grip { width: 42px; height: 5px; border-radius: 99px; background: var(--border); margin: 8px auto 6px; }
+    .sheet-head { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 14px; }
+    .sheet-title { font-size: 18px; font-weight: 800; }
+    .sheet-x { width: 34px; height: 34px; border-radius: 9px; background: var(--surface-2); display: grid; place-items: center; font-size: 16px; color: var(--muted); }
+
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+    .field input, .field select, .field textarea {
+      width: 100%; padding: 12px; border-radius: 11px; background: var(--surface);
+      border: 1px solid var(--border); color: var(--text); outline: none;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--brand); }
+    .input-prefix { position: relative; }
+    .input-prefix span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+    .input-prefix input { padding-left: 26px; }
+
+    /* list rows in sheets */
+    .list-row { display: flex; align-items: center; gap: 12px; padding: 13px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 9px; }
+    .list-row.active { border-color: var(--brand); background: var(--brand-soft); }
+    .list-row .lr-main { flex: 1; min-width: 0; }
+    .list-row .lr-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .list-row .lr-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .roomtype-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .roomtype { padding: 16px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); text-align: center; }
+    .roomtype:active { border-color: var(--brand); }
+    .roomtype .emoji { font-size: 26px; }
+    .roomtype .rt-name { font-weight: 600; font-size: 13.5px; margin-top: 6px; }
+    .roomtype .rt-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* ---------- Photos ---------- */
+    .photo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .photo-card { border-radius: 14px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); position: relative; }
+    .photo-card img { width: 100%; height: 140px; object-fit: cover; display: block; }
+    .photo-info { padding: 9px; }
+    .photo-serial { font-size: 12px; font-weight: 600; word-break: break-all; }
+    .photo-serial.empty { color: var(--faint); font-weight: 400; font-style: italic; }
+    .photo-time { font-size: 10.5px; color: var(--faint); margin-top: 3px; }
+    .photo-del { position: absolute; top: 7px; right: 7px; width: 30px; height: 30px; border-radius: 9px; background: rgba(3,7,15,.65); color: #fff; display: grid; place-items: center; backdrop-filter: blur(6px); }
+    .photo-badge { position: absolute; top: 7px; left: 7px; font-size: 10px; padding: 3px 7px; border-radius: 7px; background: rgba(3,7,15,.65); color: var(--brand); font-weight: 700; backdrop-filter: blur(6px); }
+
+    /* ---------- Empty states ---------- */
+    .empty { text-align: center; padding: 50px 20px; color: var(--muted); }
+    .empty .emoji { font-size: 42px; opacity: .8; }
+    .empty h3 { color: var(--text); margin: 14px 0 6px; font-size: 17px; }
+    .empty p { font-size: 13.5px; margin: 0 0 18px; }
+
+    /* ---------- Deal analyzer ---------- */
+    .metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+    .metric { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+    .metric .m-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+    .metric .m-val { font-size: 22px; font-weight: 800; margin-top: 5px; font-variant-numeric: tabular-nums; }
+    .metric.good .m-val { color: var(--ok); }
+    .metric.bad .m-val { color: var(--danger); }
+    .metric.brand .m-val { color: var(--brand); }
+    .verdict { border-radius: 14px; padding: 14px 16px; font-weight: 700; text-align: center; margin-bottom: 14px; }
+    .verdict.go { background: var(--ok-soft); color: var(--ok); border: 1px solid rgba(52,211,153,.3); }
+    .verdict.caution { background: rgba(251,191,36,.12); color: var(--warn); border: 1px solid rgba(251,191,36,.3); }
+    .verdict.stop { background: rgba(248,113,113,.12); color: var(--danger); border: 1px solid rgba(248,113,113,.3); }
+    .breakdown { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 6px 14px; }
+    .bd-row { display: flex; justify-content: space-between; padding: 9px 0; border-top: 1px solid var(--border); font-size: 14px; }
+    .bd-row:first-child { border-top: none; }
+    .bd-row.total { font-weight: 800; color: var(--brand); }
+    .bd-row span:last-child { font-variant-numeric: tabular-nums; }
+
+    /* settings */
+    .price-search { position: sticky; top: 0; background: var(--bg-2); padding: 6px 0 10px; z-index: 2; }
+    .price-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .price-row .pr-name { font-size: 13.5px; }
+    .price-row .pr-name small { color: var(--faint); display: block; font-size: 11px; }
+    .price-row input { width: 92px; padding: 8px; text-align: right; border-radius: 9px; background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+    .price-row .pr-changed input { border-color: var(--brand); }
+
+    .toast {
+      position: fixed; left: 50%; bottom: calc(var(--nav-h) + var(--safe-bottom) + 18px);
+      transform: translateX(-50%) translateY(20px); z-index: 90;
+      background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+      padding: 11px 18px; border-radius: 12px; font-size: 13.5px; font-weight: 600;
+      box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: all .3s; max-width: 90vw; text-align: center;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.ok { border-color: rgba(52,211,153,.4); }
+    .toast.err { border-color: rgba(248,113,113,.4); }
+
+    .hint { font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 11px 12px; margin-bottom: 12px; line-height: 1.5; }
+    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 99px; animation: spin .7s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .divider { height: 1px; background: var(--border); margin: 16px 0; }
+    .text-muted { color: var(--muted); }
+    .tag-pill { display:inline-block; font-size: 11px; padding: 3px 9px; border-radius: 99px; background: var(--surface-2); color: var(--muted); }
+
+    /* ---------- AI Smart Add ---------- */
+    .smartadd-cta {
+      background: linear-gradient(120deg, rgba(255,122,61,.18), rgba(120,90,255,.18));
+      border: 1px solid rgba(255,122,61,.35); color: var(--text); font-weight: 700;
+      margin-bottom: 14px; letter-spacing: .2px;
+    }
+    .smartadd-cta .sparkle { filter: drop-shadow(0 0 6px rgba(255,122,61,.6)); }
+    .smart-chip { font-size: 12px; padding: 7px 11px; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); }
+    .smart-chip:active { border-color: var(--brand); color: var(--brand); }
+    .smart-res { display: flex; align-items: center; gap: 11px; padding: 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 8px; }
+    .smart-res.added { border-color: var(--ok); background: var(--ok-soft); }
+    .smart-res .sr-main { flex: 1; min-width: 0; }
+    .smart-res .sr-name { font-weight: 600; font-size: 14px; }
+    .smart-res .sr-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+    .smart-res .sr-match { font-size: 10px; color: var(--brand); font-weight: 700; }
+    .smart-res .sr-add { width: 34px; height: 34px; border-radius: 10px; background: var(--brand-soft); border: 1px solid rgba(255,122,61,.3); color: var(--brand); font-size: 20px; font-weight: 700; display: grid; place-items: center; flex: 0 0 auto; }
+    .smart-res.added .sr-add { background: var(--ok); border-color: var(--ok); color: #06281c; }
+  </style>
+</head>
+<body>
+  <!-- ============ TOP APP BAR ============ -->
+  <header class="appbar">
+    <div class="appbar-row">
+      <img src="./icon.svg" class="brand-mark" alt="Spark Homes" />
+      <div class="appbar-titles" id="projectSwitch" role="button">
+        <div class="appbar-project"><span id="barProjectName">Loading…</span><span class="chev">▾</span></div>
+        <div class="appbar-sub" id="barProjectSub">Tap to switch project</div>
+      </div>
+      <div class="total-pill">
+        <span class="lbl">Repair Total</span>
+        <span class="val" id="barTotal">$0</span>
+      </div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">0 / 0 groups</div>
+    </div>
+  </header>
+
+  <!-- ============ ESTIMATE SCREEN ============ -->
+  <main class="screen" id="screen-estimate">
+    <button class="btn btn-block smartadd-cta" id="smartAddBtn">
+      <span class="sparkle">✨</span> AI Smart Add — describe what needs work
+    </button>
+    <div id="roomsContainer"></div>
+    <button class="btn btn-brand btn-block" id="addRoomBtn" style="margin-top:6px;">
+      + Add Room / Section
+    </button>
+  </main>
+
+  <!-- ============ PHOTOS SCREEN ============ -->
+  <main class="screen" id="screen-photos" hidden>
+    <div class="section-title">Walkthrough Photos</div>
+    <div class="hint">
+      📸 Photos attach to <b id="photoProjName">this project</b>. Capture serial-number plates on
+      furnaces, water heaters and appliances, then tap a photo to log its serial. Serials are
+      included in the export.
+    </div>
+    <label class="btn btn-brand btn-block" for="cameraInput" style="margin-bottom:14px;">
+      📷 Capture Photo
+    </label>
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" multiple hidden />
+    <div id="photoGrid" class="photo-grid"></div>
+    <div id="photoEmpty" class="empty">
+      <div class="emoji">📷</div>
+      <h3>No photos yet</h3>
+      <p>Capture equipment plates and damage as you walk the house.</p>
+    </div>
+  </main>
+
+  <!-- ============ DEAL ANALYZER SCREEN (creative addition) ============ -->
+  <main class="screen" id="screen-deal" hidden>
+    <div class="section-title">Deal Analyzer</div>
+    <div class="hint">
+      Decide on the spot whether the numbers work. Repair cost pulls live from your estimate.
+      We apply the investor <b>70% rule</b> to suggest a Maximum Allowable Offer.
+    </div>
+
+    <div class="field">
+      <label>After Repair Value (ARV)</label>
+      <div class="input-prefix"><span>$</span><input type="number" id="dealArv" inputmode="numeric" placeholder="e.g. 220000" /></div>
+    </div>
+    <div class="field">
+      <label>Asking / Purchase Price</label>
+      <div class="input-prefix"><span>$</span><input type="number" id="dealPrice" inputmode="numeric" placeholder="e.g. 110000" /></div>
+    </div>
+    <div class="btn-row" style="margin-bottom:6px;">
+      <div class="field" style="flex:1;margin-bottom:0;">
+        <label>Holding (mo.)</label>
+        <input type="number" id="dealMonths" inputmode="numeric" value="4" />
+      </div>
+      <div class="field" style="flex:1;margin-bottom:0;">
+        <label>Carry $/mo.</label>
+        <div class="input-prefix"><span>$</span><input type="number" id="dealCarry" inputmode="numeric" value="1200" /></div>
+      </div>
+      <div class="field" style="flex:1;margin-bottom:0;">
+        <label>Selling %</label>
+        <input type="number" id="dealSellPct" inputmode="numeric" value="8" />
+      </div>
+    </div>
+
+    <div id="dealVerdict" class="verdict" style="margin-top:14px;">Enter ARV to analyze</div>
+    <div class="metric-grid">
+      <div class="metric brand"><div class="m-lbl">Repair Cost</div><div class="m-val" id="mRepair">$0</div></div>
+      <div class="metric"><div class="m-lbl">Max Allowable Offer</div><div class="m-val" id="mMao">$0</div></div>
+      <div class="metric" id="mProfitCard"><div class="m-lbl">Est. Net Profit</div><div class="m-val" id="mProfit">$0</div></div>
+      <div class="metric" id="mRoiCard"><div class="m-lbl">Return on Cost</div><div class="m-val" id="mRoi">0%</div></div>
+    </div>
+    <div class="breakdown" id="dealBreakdown"></div>
+  </main>
+
+  <!-- ============ BOTTOM NAV ============ -->
+  <nav class="nav">
+    <button class="nav-btn active" data-screen="estimate">
+      <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+      Estimate
+    </button>
+    <button class="nav-btn" data-screen="photos">
+      <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Photos
+    </button>
+    <button class="nav-btn" data-screen="deal">
+      <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Deal
+    </button>
+    <button class="nav-btn" data-screen="menu" id="menuNavBtn">
+      <svg viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      Menu
+    </button>
+  </nav>
+
+  <!-- ============ SCRIM + SHEETS ============ -->
+  <div class="scrim" id="scrim"></div>
+
+  <!-- Projects sheet -->
+  <section class="sheet" id="sheet-projects">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head"><div class="sheet-title">Projects</div><button class="sheet-x" data-close>✕</button></div>
+    <div id="projectList"></div>
+    <button class="btn btn-brand btn-block" id="newProjectBtn" style="margin-top:10px;">+ New Project</button>
+  </section>
+
+  <!-- Add room sheet -->
+  <section class="sheet" id="sheet-addroom">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head"><div class="sheet-title">Add Room / Section</div><button class="sheet-x" data-close>✕</button></div>
+    <p class="text-muted" style="font-size:13px;margin:0 0 14px;">Each room gets its own repair groups. Bathrooms and bedrooms auto-number.</p>
+    <div class="roomtype-grid" id="roomTypeGrid"></div>
+  </section>
+
+  <!-- Menu sheet -->
+  <section class="sheet" id="sheet-menu">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head"><div class="sheet-title">Menu</div><button class="sheet-x" data-close>✕</button></div>
+    <button class="btn btn-brand btn-block" id="exportBtn" style="margin-bottom:10px;">⬇︎ Export Estimate (.zip)</button>
+    <div class="btn-row" style="margin-bottom:10px;">
+      <button class="btn btn-block" id="openPricesBtn">💲 Pricing</button>
+      <button class="btn btn-block" id="renameProjectBtn">✎ Rename Project</button>
+    </div>
+    <div class="field" style="margin-top:6px;">
+      <label>Project Notes</label>
+      <textarea id="projectNotes" rows="3" placeholder="Address, lockbox code, general condition…"></textarea>
+    </div>
+    <div class="divider"></div>
+    <button class="btn btn-danger btn-block" id="deleteProjectBtn">🗑 Delete This Project</button>
+    <p class="text-muted" style="font-size:11.5px;text-align:center;margin-top:16px;">
+      Spark Homes Repair Estimator · works offline · <span id="installState"></span>
+    </p>
+  </section>
+
+  <!-- Pricing sheet -->
+  <section class="sheet" id="sheet-prices">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head"><div class="sheet-title">Standard Pricing</div><button class="sheet-x" data-close>✕</button></div>
+    <p class="text-muted" style="font-size:12.5px;margin:0 0 10px;">
+      Edits here update the <b>global</b> price list across all projects. Per-project overrides
+      (tap a price on a line item) take priority for that project only.
+    </p>
+    <div class="btn-row" style="margin-bottom:8px;">
+      <label class="btn btn-sm" for="csvImport">⬆︎ Import CSV</label>
+      <input type="file" id="csvImport" accept=".csv" hidden />
+      <button class="btn btn-sm" id="exportCsvBtn">⬇︎ Export CSV</button>
+      <button class="btn btn-sm btn-danger" id="resetPricesBtn">↺ Reset</button>
+    </div>
+    <div class="price-search"><input type="search" id="priceSearch" placeholder="Search items…" style="width:100%;padding:11px;border-radius:11px;background:var(--surface);border:1px solid var(--border);color:var(--text);" /></div>
+    <div id="priceList"></div>
+  </section>
+
+  <!-- Price override sheet -->
+  <section class="sheet" id="sheet-override">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head"><div class="sheet-title">Edit Price</div><button class="sheet-x" data-close>✕</button></div>
+    <div id="overrideBody"></div>
+  </section>
+
+  <!-- Add custom item sheet -->
+  <section class="sheet" id="sheet-additem">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head"><div class="sheet-title">Add Line Item</div><button class="sheet-x" data-close>✕</button></div>
+    <div class="field"><label>Item name</label><input type="text" id="newItemName" placeholder="e.g. Replace sump pump" /></div>
+    <div class="btn-row">
+      <div class="field" style="flex:1;"><label>Unit cost</label><div class="input-prefix"><span>$</span><input type="number" id="newItemCost" inputmode="decimal" placeholder="0.00" /></div></div>
+      <div class="field" style="flex:1;"><label>Unit</label><input type="text" id="newItemUnit" placeholder="ea." value="ea." /></div>
+    </div>
+    <button class="btn btn-brand btn-block" id="confirmAddItem">Add to group</button>
+  </section>
+
+  <!-- AI Smart Add sheet -->
+  <section class="sheet" id="sheet-smartadd">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head"><div class="sheet-title">✨ AI Smart Add</div><button class="sheet-x" data-close>✕</button></div>
+    <p class="text-muted" style="font-size:12.5px;margin:0 0 12px;">
+      Describe the problem in plain English. An on-device AI model ranks the matching line items
+      from the full price list — tap to add them to the right room.
+    </p>
+    <div class="field" style="margin-bottom:8px;">
+      <input type="text" id="smartInput" placeholder="e.g. outside AC is dead, carpet ruined…" autocomplete="off" />
+    </div>
+    <div class="btn-row" id="smartChips" style="flex-wrap:wrap;margin-bottom:10px;"></div>
+    <div id="smartStatus" class="text-muted" style="font-size:12px;margin-bottom:8px;"></div>
+    <div id="smartResults"></div>
+  </section>
+
+  <!-- Generic prompt sheet (rename / new project) -->
+  <section class="sheet" id="sheet-prompt">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head"><div class="sheet-title" id="promptTitle">Name</div><button class="sheet-x" data-close>✕</button></div>
+    <div class="field"><input type="text" id="promptInput" /></div>
+    <button class="btn btn-brand btn-block" id="promptConfirm">Save</button>
+  </section>
+
+  <div class="toast" id="toast"></div>
+  <script>
+  'use strict';
+  /* ============================================================
+     SPARK HOMES — REPAIR ESTIMATOR
+     Vanilla JS. Data-model driven so rooms/groups stay flexible.
+     ============================================================ */
+
+  /* ---- 1. DEFAULT PRICE LIST (single source of truth, from Pricing List.csv) ---- */
+  const DEFAULT_ITEMS = [
+    ["ig-01","Refinish Hardwood Floor",2.35,"sqft"],
+    ["ig-02",'New Hardwoods 1.5"',10.00,"sqft"],
+    ["ig-03",'New Hardwoods 2"',4.75,"sqft"],
+    ["ig-04","Hardwood Splicing",8.40,"sqft"],
+    ["ig-05","Vinyl Plank",2.50,"sqft"],
+    ["ig-06","Carpet",1.90,"sqft"],
+    ["ig-07","Interior Paint — 2 Tone",2.95,"sqft"],
+    ["ig-08","Drywall Repair",900.00,"1,000 sqft"],
+    ["ig-09","Wallpaper Removal",250.00,"room"],
+    ["ig-10","Interior Door — Hollow Slab",125.00,"ea."],
+    ["ig-11","Interior Door Hardware (Knob + Hinges + Labor)",25.00,"ea."],
+    ["ig-12","Bifold Door with Framing",400.00,"ea."],
+    ["ig-13","Interior Door — Pre-hung",200.00,"ea."],
+    ["ig-14","Front Entry Door",475.00,"ea."],
+    ["ig-15","Front Entry Door Hardware",80.00,"ea."],
+    ["ig-16","Exterior Door Hardware",75.00,"handle"],
+    ["ig-17","Exterior Insulated Side Door (Installed)",500.00,"ea."],
+    ["ig-18","Sliding Glass Door",1025.00,"ea."],
+    ["ig-19","Trim Out (Casing, Crown, Baseboard)",3.75,"LF"],
+    ["ig-20","MISC / Punch List",2650.00,"flat"],
+    ["ig-21","Finish Out Labor",1350.00,"flat"],
+    ["ig-22","Light Fixtures",70.00,"100 sqft"],
+    ["ig-23","Bedbug Spray / Heat Treat",475.00,"ea."],
+    ["ig-24","Termite Treatment",650.00,"ea."],
+    ["ig-25","Demo",1375.00,"variable"],
+    ["ig-26","Haul Off",725.00,"load"],
+    ["ig-27","Final Cleaning",325.00,"flat"],
+    ["ig-28","Staging",0.90,"sqft"],
+    ["kt-01","Hinges and Pulls",275.00,"kitchen"],
+    ["kt-02","Cabinets Uppers",125.00,"LF"],
+    ["kt-03","Cabinets Lowers",150.00,"LF"],
+    ["kt-04","Cabinet Door Faces Only",80.00,"door"],
+    ["kt-05","Cabinets (Labor & Paint)",1100.00,"kitchen"],
+    ["kt-06",'Granite + 4" Splash Guard',40.00,"LF"],
+    ["kt-07","Backsplash",725.00,"house"],
+    ["kt-08","Misc Woodwork",500.00,"variable"],
+    ["kt-09","Tile — Large Areas",6.45,"sqft"],
+    ["kt-10","Tile — Small Areas",10.00,"sqft"],
+    ["kt-11","Undermount Kitchen Sink",325.00,"ea."],
+    ["kt-12","Microwave / Hood",500.00,"ea."],
+    ["kt-13","Range",725.00,"ea."],
+    ["kt-14","Wall Oven",1075.00,"ea."],
+    ["kt-15","Cooktop",550.00,"ea."],
+    ["kt-16","Dishwasher",575.00,"ea."],
+    ["kt-17","Fridge",1175.00,"ea."],
+    ["ba-01","Granite ($/LF)",35.00,"LF"],
+    ["ba-02","New Bottom Vanity",125.00,"LF"],
+    ["ba-03",'Home Depot Vanity w/ Sink (18")',225.00,"ea."],
+    ["ba-04","Toilet",150.00,"ea."],
+    ["ba-05","Tile — Large Areas",5.80,"sqft"],
+    ["ba-06","Tile — Small Areas",10.00,"sqft"],
+    ["ba-07","Reglaze Tub or Chemical Clean",350.00,"ea."],
+    ["ba-08","Reglaze Tub + Surround",750.00,"ea."],
+    ["ba-09","Reglaze Shower",1325.00,"ea."],
+    ["ba-10","Tiled Shower Tear Out + Tile Install",3100.00,"ea."],
+    ["ba-11","Tub Tile Surround Tear Out + Tile Install (incl. tub)",2250.00,"ea."],
+    ["ba-12","Shower Plastic Insert Tear Out + New Insert",825.00,"ea."],
+    ["ba-13","Tub Tear Out + New Insert & Tub",1575.00,"ea."],
+    ["ba-14","Undermount Sink",150.00,"ea."],
+    ["ba-15","Mirror",200.00,"ea."],
+    ["ba-16","HVL (needed if no window)",275.00,"ea."],
+    ["as-01","Furnace",3350.00,"ea."],
+    ["as-02","Condensing Unit",3300.00,"ea."],
+    ["as-03","Package Unit",4700.00,"ea."],
+    ["as-04","A-Coil (if no condensing unit)",1625.00,"ea."],
+    ["as-05","Ducting (if NO HVAC)",3200.00,"ea."],
+    ["as-06","Duct Cleaning — Floor Vents",550.00,"ea."],
+    ["as-07","Window Unit Replacement 220",575.00,"ea."],
+    ["as-08","Hot Water Heater w/ Expansion Tank",1425.00,"ea."],
+    ["as-09","Hot Water Heater Expansion Tank Only",200.00,"ea."],
+    ["as-10","Switches / Outlets",1400.00,"house"],
+    ["as-11","Standard Electrical",1650.00,"house"],
+    ["as-12","Subfloor",8.20,"sqft"],
+    ["as-13","Framing",950.00,"variable"],
+    ["as-14","Structural (Pier)",375.00,"pier"],
+    ["as-15","Structural Foam Injection",5.85,"sqft of affected area"],
+    ["as-16","Roof",1100.00,"225 sqft L&M"],
+    ["as-17","Plumbing",1000.00,"variable"],
+    ["as-18","Electrical Panel Swap to 200A",2350.00,"ea."],
+    ["as-19","Full Electrical Rewire (to Studs)",5.65,"sqft"],
+    ["as-20","Full Electrical Rewire (leaving Drywall)",9.15,"sqft"],
+    ["as-21","Wall Insulation (to Studs)",1.20,"sqft"],
+    ["as-22","Attic Insulation",1225.00,"1,600 sqft house"],
+    ["as-23","New Drywall to Studs (L&M)",5.20,"sqft"],
+    ["as-24","Aluminum Wiring",2450.00,"variable"],
+    ["ex-01","Fence Repair — Chain Link / Wood Gate",225.00,"variable"],
+    ["ex-02","Fence Repair — Chain Link",275.00,"LF"],
+    ["ex-03","Fence Repair — Privacy 6ft",30.00,"LF"],
+    ["ex-04","Landscaping",450.00,"variable"],
+    ["ex-05","Vinyl Siding (10'x10')",300.00,"square"],
+    ["ex-06","Tuck Pointing",225.00,"variable"],
+    ["ex-07","Exterior Paint",2.60,"sqft"],
+    ["ex-08","Exterior Wood Repair",525.00,"variable"],
+    ["ex-09","Siding Repair (10'x10')",975.00,"section"],
+    ["ex-10","Tree Trimming",450.00,"variable"],
+    ["ex-11","Tree Removal (w/o stump)",1450.00,"tree"],
+    ["ex-12","Stump Grinding",250.00,"stump"],
+    ["ex-13","Aluminum Window Paint (Int/Ext)",700.00,"house"],
+    ["ex-14","Windows (3x5 sash)",425.00,"ea."],
+    ["ex-15","Window Repair — Non-Insulated (6x6+)",35.00,"sf"],
+    ["ex-16","Window Repair — Insulated (6x6+)",40.00,"sf"],
+    ["ex-17","Aluminum Framed Window Pane",100.00,"pane"],
+    ["ex-18","Guttering",4.15,"LF"],
+    ["ex-19","Concrete w/ Demo",200.00,"sqft"],
+    ["ex-20","Mowing (summer, every 2 weeks)",45.00,"mowing"],
+    ["ex-21","Garage Door — 1 Car",975.00,"ea."],
+    ["ex-22","Garage Door — 2 Car (Installed)",1225.00,"ea."],
+    ["ex-23","Garage Conversion",8850.00,"ea."]
+  ];
+
+  /* Base catalog keyed by id */
+  const CATALOG = {};
+  DEFAULT_ITEMS.forEach(([id,name,cost,unit]) => { CATALOG[id] = { id, name, cost, unit }; });
+
+  /* ---- 2. GROUP TEMPLATES (every item mapped into the 19 reference groups) ---- */
+  const GROUPS = {
+    flooring:       { name: "Flooring",            items: ["ig-01","ig-02","ig-03","ig-04","ig-05","ig-06"] },
+    paint:          { name: "Paint & Wall Repair", items: ["ig-07","ig-08","ig-09"] },
+    doors:          { name: "Doors",               items: ["ig-10","ig-11","ig-12","ig-13","ig-14","ig-15","ig-16","ig-17","ig-18","ig-19"] },
+    pest:           { name: "Pest Control",        items: ["ig-23","ig-24"] },
+    genmisc:        { name: "General / Misc",      items: ["ig-20","ig-21","ig-25","ig-26","ig-27","ig-28"] },
+    kit_cabinets:   { name: "Cabinets",            items: ["kt-01","kt-02","kt-03","kt-04","kt-05","kt-08"] },
+    kit_counter:    { name: "Countertops & Tile",  items: ["kt-06","kt-07","kt-09","kt-10","kt-11"] },
+    kit_appliances: { name: "Appliances",          items: ["kt-12","kt-13","kt-14","kt-15","kt-16","kt-17"] },
+    bath_vanity:    { name: "Vanity & Countertop", items: ["ba-01","ba-02","ba-03","ba-04","ba-14","ba-15","ba-16"] },
+    bath_tub:       { name: "Tub & Shower",        items: ["ba-07","ba-08","ba-09","ba-10","ba-11","ba-12","ba-13"] },
+    bath_tile:      { name: "Tile",                items: ["ba-05","ba-06"] },
+    hvac:           { name: "HVAC",                items: ["as-01","as-02","as-03","as-04","as-05","as-06","as-07","as-08","as-09"] },
+    electrical:     { name: "Electrical",          items: ["as-10","as-11","as-18","as-19","as-20","as-24"] },
+    structural:     { name: "Structural",          items: ["as-12","as-13","as-14","as-15","as-16","as-17"] },
+    insulation:     { name: "Insulation & Drywall",items: ["as-21","as-22","as-23"] },
+    ext_fence:      { name: "Fence",               items: ["ex-01","ex-02","ex-03"] },
+    ext_siding:     { name: "Siding",              items: ["ex-05","ex-06","ex-07","ex-08","ex-09","ex-18"] },
+    ext_windows:    { name: "Windows",             items: ["ex-13","ex-14","ex-15","ex-16","ex-17"] },
+    ext_garage:     { name: "Garage",              items: ["ex-21","ex-22","ex-23"] },
+    ext_trees:      { name: "Trees & Landscaping", items: ["ex-04","ex-10","ex-11","ex-12","ex-19","ex-20"] },
+    lighting:       { name: "Lighting",            items: ["ig-22"] },
+    closet:         { name: "Closet",              items: ["ig-12","ig-10","ig-11"] }
+  };
+
+  /* ---- 3. ROOM TYPES ---- */
+  const ROOM_TYPES = {
+    interior: { name: "Interior / General", emoji: "🏠", single: true,  groups: ["flooring","paint","doors","pest","genmisc"] },
+    kitchen:  { name: "Kitchen",            emoji: "🍳", single: false, groups: ["kit_cabinets","kit_counter","kit_appliances"] },
+    bathroom: { name: "Bathroom",           emoji: "🛁", single: false, groups: ["bath_vanity","bath_tub","bath_tile"], numbered: true },
+    bedroom:  { name: "Bedroom",            emoji: "🛏️", single: false, groups: ["flooring","paint","doors","closet"], numbered: true },
+    living:   { name: "Living / Common",    emoji: "🛋️", single: false, groups: ["flooring","paint","doors","lighting"], numbered: true },
+    systems:  { name: "Systems & Structure",emoji: "⚙️", single: true,  groups: ["hvac","electrical","structural","insulation"] },
+    exterior: { name: "Exterior",           emoji: "🌳", single: true,  groups: ["ext_fence","ext_siding","ext_windows","ext_garage","ext_trees"] }
+  };
+  const DEFAULT_ROOM_ORDER = ["exterior","interior","kitchen","bathroom","systems"];
+
+  /* ---- 4. STORAGE ---- */
+  const LS_STATE = "spark.state.v1";
+  const LS_PRICES = "spark.prices.v1";
+
+  let state = { currentId: null, projects: {} };
+  let globalPrices = {};   // { itemId: cost } — global edits layered over CATALOG defaults
+
+  const uid = (p="id") => p + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+
+  function loadAll() {
+    try { state = JSON.parse(localStorage.getItem(LS_STATE)) || state; } catch (e) {}
+    try { globalPrices = JSON.parse(localStorage.getItem(LS_PRICES)) || {}; } catch (e) {}
+    if (!state.projects) state.projects = {};
+    if (!state.currentId || !state.projects[state.currentId]) {
+      const ids = Object.keys(state.projects);
+      if (ids.length) state.currentId = ids[0];
+      else createProject("123 Main St", true);
+    }
+  }
+  function saveState() {
+    const p = currentProject();
+    if (p) p.updatedAt = Date.now();
+    localStorage.setItem(LS_STATE, JSON.stringify(state));
+  }
+  function savePrices() { localStorage.setItem(LS_PRICES, JSON.stringify(globalPrices)); }
+
+  function currentProject() { return state.projects[state.currentId]; }
+
+  function newRoom(type) {
+    return newRoomFor(currentProject(), type);
+  }
+
+  function createProject(name, silent) {
+    const id = uid("prj");
+    const project = {
+      id, name: name || "New Project", notes: "",
+      createdAt: Date.now(), updatedAt: Date.now(),
+      rooms: [], data: {}, overrides: {}, photos: [],
+      deal: { arv: "", price: "", months: 4, carry: 1200, sellPct: 8 },
+      ui: {}
+    };
+    state.projects[id] = project;
+    state.currentId = id;
+    DEFAULT_ROOM_ORDER.forEach(t => {
+      const r = newRoomFor(project, t);
+      project.rooms.push(r);
+    });
+    if (!silent) { saveState(); }
+    return project;
+  }
+  function newRoomFor(project, type) {
+    const def = ROOM_TYPES[type];
+    let label = def.name;
+    if (def.numbered) {
+      const count = project.rooms.filter(r => r.type === type).length;
+      label = def.name + " " + (count + 1);
+    }
+    return { iid: uid("rm"), type, label };
+  }
+
+  /* ---- 5. PRICE RESOLUTION ---- */
+  function basePrice(itemId, customDef) {
+    if (customDef) return customDef.cost;
+    if (globalPrices[itemId] != null) return globalPrices[itemId];
+    return CATALOG[itemId] ? CATALOG[itemId].cost : 0;
+  }
+  function effectivePrice(project, itemId, customDef) {
+    if (project.overrides && project.overrides[itemId] != null) return project.overrides[itemId];
+    return basePrice(itemId, customDef);
+  }
+  function itemDef(project, gid, itemId) {
+    // custom items live on the group-instance; look them up first
+    if (CATALOG[itemId]) return CATALOG[itemId];
+    return null;
+  }
+
+  /* ---- 6. GROUP STATE ACCESS ---- */
+  function groupState(project, iid, gid) {
+    if (!project.data[iid]) project.data[iid] = {};
+    if (!project.data[iid][gid]) project.data[iid][gid] = { noAction: false, items: {}, custom: [], removed: [] };
+    const gs = project.data[iid][gid];
+    if (!gs.items) gs.items = {};
+    if (!gs.custom) gs.custom = [];
+    if (!gs.removed) gs.removed = [];
+    return gs;
+  }
+  function visibleItems(gid, gs) {
+    const base = GROUPS[gid].items.filter(id => !gs.removed.includes(id)).map(id => CATALOG[id]);
+    return base.concat(gs.custom || []);
+  }
+  </script>
+  <script>
+  'use strict';
+  /* ============ RENDER + INTERACTION LAYER ============ */
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+
+  function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function fmtMoney(n, dec=0){
+    if (isNaN(n)) n = 0;
+    return "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  }
+  function fmtPrice(n){ return (n % 1 === 0) ? fmtMoney(n) : fmtMoney(n, 2); }
+  function priceOf(p, def){ return effectivePrice(p, def.id, CATALOG[def.id] ? null : def); }
+  function isOverridden(p, id){ return p.overrides && p.overrides[id] != null; }
+
+  /* ---- collapse helpers ---- */
+  function uiFlag(key, def){ const p = currentProject(); if (!p.ui) p.ui = {}; return key in p.ui ? p.ui[key] : def; }
+  function setUiFlag(key, val){ const p = currentProject(); if (!p.ui) p.ui = {}; p.ui[key] = val; }
+
+  /* ---- FULL RENDER of estimate screen ---- */
+  function renderRooms(){
+    const p = currentProject();
+    const c = $("#roomsContainer");
+    if (!p.rooms.length){
+      c.innerHTML = `<div class="empty"><div class="emoji">🏚️</div><h3>No rooms yet</h3><p>Add rooms as you walk the property.</p></div>`;
+      return;
+    }
+    let html = "";
+    p.rooms.forEach(room => {
+      const def = ROOM_TYPES[room.type];
+      const roomCollapsed = uiFlag("rc:"+room.iid, false);
+      let roomTotal = 0, gDone = 0, gTotal = def.groups.length;
+      let groupsHtml = "";
+      def.groups.forEach(gid => {
+        const gs = groupState(p, room.iid, gid);
+        const items = visibleItems(gid, gs);
+        let gTotalCost = 0, anyOn = false;
+        const gCollapsed = uiFlag("gc:"+room.iid+":"+gid, true);
+        let itemsHtml = "";
+        items.forEach(d => {
+          const st = gs.items[d.id] || {};
+          const on = !!st.on; if (on) anyOn = true;
+          const qty = st.qty != null ? st.qty : 1;
+          const price = priceOf(p, d);
+          const line = on ? qty * price : 0;
+          if (on) gTotalCost += line;
+          const over = isOverridden(p, d.id);
+          itemsHtml += `
+            <div class="item ${on?'checked':''}" data-line="${room.iid}|${gid}|${d.id}">
+              <input type="checkbox" class="item-check" ${on?'checked':''} data-act="toggle" data-iid="${room.iid}" data-gid="${gid}" data-item="${d.id}" aria-label="Select ${esc(d.name)}" />
+              <div class="item-main">
+                <div class="item-name">${esc(d.name)}</div>
+                <div class="item-sub">
+                  <button class="price-btn ${over?'overridden':''}" data-act="price" data-iid="${room.iid}" data-gid="${gid}" data-item="${d.id}">${fmtPrice(price)}</button>
+                  <span class="unit-tag">/ ${esc(d.unit)}</span>
+                  <button class="item-del" data-act="delitem" data-iid="${room.iid}" data-gid="${gid}" data-item="${d.id}" aria-label="Delete item">🗑</button>
+                </div>
+              </div>
+              <div class="item-right">
+                <div class="qty-row">
+                  <button class="qty-btn" data-act="dec" data-iid="${room.iid}" data-gid="${gid}" data-item="${d.id}">−</button>
+                  <input class="qty-input" type="number" inputmode="decimal" min="0" step="1" value="${qty}" data-act="qty" data-iid="${room.iid}" data-gid="${gid}" data-item="${d.id}" />
+                  <button class="qty-btn" data-act="inc" data-iid="${room.iid}" data-gid="${gid}" data-item="${d.id}">+</button>
+                </div>
+                <div class="line-total" data-tot="${room.iid}|${gid}|${d.id}">${on?fmtMoney(line):''}</div>
+              </div>
+            </div>`;
+        });
+        const done = gs.noAction || anyOn;
+        if (done) gDone++;
+        roomTotal += gTotalCost;
+        groupsHtml += `
+          <div class="group ${done?'done':''} ${gCollapsed?'collapsed':''}" data-grp="${room.iid}|${gid}">
+            <div class="group-head" data-act="togglegroup" data-iid="${room.iid}" data-gid="${gid}">
+              <span class="group-dot"></span>
+              <span class="group-name">${esc(GROUPS[gid].name)}</span>
+              <span class="group-badge cost" data-gcost="${room.iid}|${gid}">${gTotalCost>0?fmtMoney(gTotalCost):''}</span>
+              <span class="group-caret">▾</span>
+            </div>
+            <div class="group-body">
+              <label class="noaction ${gs.noAction?'on':''}">
+                <input type="checkbox" ${gs.noAction?'checked':''} data-act="noaction" data-iid="${room.iid}" data-gid="${gid}" />
+                No action needed — reviewed, nothing to fix
+              </label>
+              ${itemsHtml}
+              <button class="btn btn-ghost btn-sm" style="margin:6px 2px;color:var(--brand);" data-act="additem" data-iid="${room.iid}" data-gid="${gid}">+ Add custom item</button>
+            </div>
+          </div>`;
+      });
+      html += `
+        <div class="room ${roomCollapsed?'collapsed':''}" data-room="${room.iid}">
+          <div class="room-head" data-act="toggleroom" data-iid="${room.iid}">
+            <div class="room-icon">${def.emoji}</div>
+            <div class="room-meta">
+              <div class="room-name">${esc(room.label)}</div>
+              <div class="room-stat"><b data-rdone="${room.iid}">${gDone}</b>/${gTotal} groups · <span data-rcost="${room.iid}">${fmtMoney(roomTotal)}</span></div>
+            </div>
+            <span class="room-caret">▾</span>
+          </div>
+          <div class="room-body">${groupsHtml}</div>
+          <div class="room-actions">
+            <button class="btn btn-ghost btn-sm btn-danger" data-act="delroom" data-iid="${room.iid}">Remove ${esc(room.label)}</button>
+          </div>
+        </div>`;
+    });
+    c.innerHTML = html;
+    updateTotals();
+  }
+
+  /* ---- LIGHT UPDATE: recompute and patch DOM without rebuilding ---- */
+  function updateTotals(){
+    const p = currentProject();
+    let projectTotal = 0, totalGroups = 0, doneGroups = 0;
+    p.rooms.forEach(room => {
+      let roomTotal = 0, roomDone = 0;
+      ROOM_TYPES[room.type].groups.forEach(gid => {
+        totalGroups++;
+        const gs = groupState(p, room.iid, gid);
+        let gTotal = 0, anyOn = false;
+        visibleItems(gid, gs).forEach(d => {
+          const st = gs.items[d.id] || {};
+          if (st.on){ anyOn = true; gTotal += (st.qty!=null?st.qty:1) * priceOf(p, d); }
+        });
+        const done = gs.noAction || anyOn;
+        if (done){ doneGroups++; roomDone++; }
+        roomTotal += gTotal;
+        const gcost = $(`[data-gcost="${room.iid}|${gid}"]`);
+        if (gcost) gcost.textContent = gTotal>0 ? fmtMoney(gTotal) : "";
+        const grp = $(`[data-grp="${room.iid}|${gid}"]`);
+        if (grp) grp.classList.toggle("done", done);
+      });
+      projectTotal += roomTotal;
+      const rc = $(`[data-rcost="${room.iid}"]`); if (rc) rc.textContent = fmtMoney(roomTotal);
+      const rd = $(`[data-rdone="${room.iid}"]`); if (rd) rd.textContent = roomDone;
+    });
+    $("#barTotal").textContent = fmtMoney(projectTotal);
+    const pct = totalGroups ? Math.round(doneGroups/totalGroups*100) : 0;
+    $("#progressFill").style.width = pct + "%";
+    $("#progressLabel").textContent = `${doneGroups}/${totalGroups} groups · ${pct}%`;
+  }
+
+  function patchLine(iid, gid, itemId){
+    const p = currentProject();
+    const gs = groupState(p, iid, gid);
+    const def = CATALOG[itemId] || (gs.custom||[]).find(c => c.id === itemId);
+    if (!def) return;
+    const st = gs.items[itemId] || {};
+    const on = !!st.on, qty = st.qty!=null?st.qty:1;
+    const line = on ? qty * priceOf(p, def) : 0;
+    const row = $(`[data-line="${iid}|${gid}|${itemId}"]`);
+    if (row){
+      row.classList.toggle("checked", on);
+      const tot = row.querySelector(`[data-tot="${iid}|${gid}|${itemId}"]`);
+      if (tot) tot.textContent = on ? fmtMoney(line) : "";
+      const qi = row.querySelector(".qty-input"); if (qi && qi.value != qty) qi.value = qty;
+    }
+    updateTotals();
+  }
+  </script>
+  <script>
+  'use strict';
+  /* ============ EVENTS / NAV / SHEETS ============ */
+
+  function toast(msg, type=""){
+    const t = $("#toast"); t.textContent = msg; t.className = "toast show " + type;
+    clearTimeout(toast._t); toast._t = setTimeout(()=> t.className = "toast " + type, 2400);
+  }
+
+  /* ----- bottom nav ----- */
+  const SCREENS = ["estimate","photos","deal"];
+  function showScreen(name){
+    if (name === "menu"){ openSheet("menu"); return; }
+    SCREENS.forEach(s => { const el = $("#screen-"+s); if (el) el.hidden = (s !== name); });
+    $$(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.screen === name));
+    if (name === "deal") renderDeal();
+    if (name === "photos") renderPhotos();
+    window.scrollTo({ top: 0 });
+  }
+  $$(".nav-btn").forEach(b => b.addEventListener("click", () => showScreen(b.dataset.screen)));
+
+  /* ----- sheets ----- */
+  let openSheets = [];
+  function openSheet(id){
+    const sheet = $("#sheet-"+id); if (!sheet) return;
+    $("#scrim").classList.add("open");
+    sheet.classList.add("open");
+    openSheets.push(id);
+    if (id === "projects") renderProjectList();
+    if (id === "addroom") renderRoomTypeGrid();
+    if (id === "prices") renderPriceList();
+    if (id === "menu") prepMenu();
+  }
+  function closeSheet(id){
+    const which = id || openSheets[openSheets.length-1];
+    const sheet = $("#sheet-"+which); if (sheet) sheet.classList.remove("open");
+    openSheets = openSheets.filter(s => s !== which);
+    if (!openSheets.length) $("#scrim").classList.remove("open");
+  }
+  function closeAllSheets(){ openSheets.slice().forEach(s => closeSheet(s)); }
+  $("#scrim").addEventListener("click", closeAllSheets);
+  $$("[data-close]").forEach(b => b.addEventListener("click", () => closeSheet()));
+
+  /* ----- app bar / project switch ----- */
+  $("#projectSwitch").addEventListener("click", () => openSheet("projects"));
+
+  function refreshBar(){
+    const p = currentProject();
+    $("#barProjectName").textContent = p.name;
+    const n = p.rooms.length, ph = p.photos.length;
+    $("#barProjectSub").textContent = `${n} room${n!==1?'s':''} · ${ph} photo${ph!==1?'s':''}`;
+    $("#photoProjName").textContent = p.name;
+  }
+
+  /* ============ ESTIMATE INTERACTIONS (delegated) ============ */
+  const rc = $("#roomsContainer");
+  rc.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-act]"); if (!t) return;
+    const act = t.dataset.act, p = currentProject();
+    const { iid, gid, item } = t.dataset;
+
+    if (act === "toggleroom"){ const k="rc:"+iid; setUiFlag(k, !uiFlag(k,false)); $(`[data-room="${iid}"]`).classList.toggle("collapsed"); saveState(); return; }
+    if (act === "togglegroup"){ const k="gc:"+iid+":"+gid; setUiFlag(k, !uiFlag(k,true)); $(`[data-grp="${iid}|${gid}"]`).classList.toggle("collapsed"); saveState(); return; }
+
+    if (act === "toggle"){
+      const gs = groupState(p, iid, gid);
+      if (!gs.items[item]) gs.items[item] = {};
+      gs.items[item].on = t.checked;
+      if (t.checked && gs.items[item].qty == null) gs.items[item].qty = 1;
+      patchLine(iid, gid, item); saveState(); return;
+    }
+    if (act === "inc" || act === "dec"){
+      const gs = groupState(p, iid, gid);
+      if (!gs.items[item]) gs.items[item] = { on: true, qty: 0 };
+      let q = gs.items[item].qty != null ? gs.items[item].qty : 1;
+      q = act === "inc" ? q + 1 : Math.max(0, q - 1);
+      gs.items[item].qty = q;
+      if (q > 0) gs.items[item].on = true;
+      patchLine(iid, gid, item); saveState(); return;
+    }
+    if (act === "noaction"){
+      const gs = groupState(p, iid, gid);
+      gs.noAction = t.checked;
+      if (t.checked){ Object.values(gs.items).forEach(s => s.on = false); }
+      renderRooms(); saveState(); return;
+    }
+    if (act === "price"){ openOverride(iid, gid, item); return; }
+    if (act === "delitem"){ confirmDeleteItem(iid, gid, item); return; }
+    if (act === "additem"){ openAddItem(iid, gid); return; }
+    if (act === "delroom"){ confirmDeleteRoom(iid); return; }
+  });
+
+  rc.addEventListener("input", (e) => {
+    const t = e.target.closest('[data-act="qty"]'); if (!t) return;
+    const p = currentProject(); const { iid, gid, item } = t.dataset;
+    const gs = groupState(p, iid, gid);
+    if (!gs.items[item]) gs.items[item] = {};
+    let v = parseFloat(t.value); if (isNaN(v) || v < 0) v = 0;
+    gs.items[item].qty = v;
+    gs.items[item].on = v > 0 ? true : gs.items[item].on;
+    // patch line total + checkbox state without rebuild (keep input focus)
+    const row = $(`[data-line="${iid}|${gid}|${item}"]`);
+    if (row){
+      const on = !!gs.items[item].on;
+      row.classList.toggle("checked", on);
+      const cb = row.querySelector(".item-check"); if (cb) cb.checked = on;
+      const tot = row.querySelector(`[data-tot="${iid}|${gid}|${item}"]`);
+      const def = CATALOG[item] || (gs.custom||[]).find(c => c.id === item);
+      if (tot) tot.textContent = on ? fmtMoney(v * priceOf(p, def)) : "";
+    }
+    updateTotals(); saveState();
+  });
+
+  /* ----- price override ----- */
+  function openOverride(iid, gid, itemId){
+    const p = currentProject();
+    const gs = groupState(p, iid, gid);
+    const def = CATALOG[itemId] || (gs.custom||[]).find(c => c.id === itemId);
+    const base = basePrice(itemId, CATALOG[itemId]?null:def);
+    const cur = effectivePrice(p, itemId, CATALOG[itemId]?null:def);
+    $("#overrideBody").innerHTML = `
+      <p style="margin:0 0 6px;font-weight:600;">${esc(def.name)}</p>
+      <p class="text-muted" style="font-size:12.5px;margin:0 0 14px;">Standard price ${fmtPrice(base)} / ${esc(def.unit)}. This override applies only to <b>${esc(p.name)}</b>.</p>
+      <div class="field"><label>Project unit cost</label><div class="input-prefix"><span>$</span><input type="number" id="ovInput" inputmode="decimal" value="${cur}" /></div></div>
+      <div class="btn-row">
+        <button class="btn btn-block" id="ovReset">Reset to standard</button>
+        <button class="btn btn-brand btn-block" id="ovSave">Save override</button>
+      </div>`;
+    openSheet("override");
+    $("#ovSave").onclick = () => {
+      let v = parseFloat($("#ovInput").value);
+      if (isNaN(v) || v < 0){ toast("Enter a valid price","err"); return; }
+      p.overrides[itemId] = v; saveState(); closeSheet("override"); renderRooms(); toast("Price updated for this project","ok");
+    };
+    $("#ovReset").onclick = () => { delete p.overrides[itemId]; saveState(); closeSheet("override"); renderRooms(); toast("Reset to standard price"); };
+  }
+
+  /* ----- add custom item ----- */
+  let addItemCtx = null;
+  function openAddItem(iid, gid){
+    addItemCtx = { iid, gid };
+    $("#newItemName").value = ""; $("#newItemCost").value = ""; $("#newItemUnit").value = "ea.";
+    openSheet("additem");
+  }
+  $("#confirmAddItem").addEventListener("click", () => {
+    if (!addItemCtx) return;
+    const name = $("#newItemName").value.trim();
+    const cost = parseFloat($("#newItemCost").value);
+    const unit = $("#newItemUnit").value.trim() || "ea.";
+    if (!name){ toast("Enter an item name","err"); return; }
+    if (isNaN(cost) || cost < 0){ toast("Enter a valid cost","err"); return; }
+    const p = currentProject();
+    const gs = groupState(p, addItemCtx.iid, addItemCtx.gid);
+    const id = uid("cst");
+    gs.custom.push({ id, name, cost, unit });
+    gs.items[id] = { on: true, qty: 1 };
+    saveState(); closeSheet("additem"); renderRooms(); toast("Item added","ok");
+  });
+
+  /* ----- delete item / room ----- */
+  function confirmDeleteItem(iid, gid, itemId){
+    const p = currentProject();
+    const gs = groupState(p, iid, gid);
+    const isCustom = !CATALOG[itemId];
+    if (isCustom){ gs.custom = gs.custom.filter(c => c.id !== itemId); }
+    else if (!gs.removed.includes(itemId)) gs.removed.push(itemId);
+    delete gs.items[itemId];
+    saveState(); renderRooms(); toast("Item removed");
+  }
+  function confirmDeleteRoom(iid){
+    const p = currentProject();
+    const room = p.rooms.find(r => r.iid === iid);
+    if (!confirm(`Remove "${room.label}" and its selections?`)) return;
+    p.rooms = p.rooms.filter(r => r.iid !== iid);
+    delete p.data[iid];
+    saveState(); refreshBar(); renderRooms(); toast("Room removed");
+  }
+
+  /* ============ ADD ROOM ============ */
+  $("#addRoomBtn").addEventListener("click", () => openSheet("addroom"));
+  function renderRoomTypeGrid(){
+    const grid = $("#roomTypeGrid");
+    grid.innerHTML = Object.entries(ROOM_TYPES).map(([key,def]) => {
+      const count = currentProject().rooms.filter(r => r.type === key).length;
+      const sub = def.single ? (count ? "Added" : "Whole-house") : (count ? count+" added" : "Add instance");
+      return `<button class="roomtype" data-rt="${key}">
+        <div class="emoji">${def.emoji}</div>
+        <div class="rt-name">${esc(def.name)}</div>
+        <div class="rt-sub">${sub}</div>
+      </button>`;
+    }).join("");
+    $$(".roomtype", grid).forEach(b => b.addEventListener("click", () => {
+      const key = b.dataset.rt, p = currentProject();
+      if (ROOM_TYPES[key].single && p.rooms.some(r => r.type === key)){
+        toast(ROOM_TYPES[key].name + " already added"); return;
+      }
+      p.rooms.push(newRoomFor(p, key));
+      saveState(); closeSheet("addroom"); refreshBar(); renderRooms();
+      toast(ROOM_TYPES[key].name + " added","ok");
+    }));
+  }
+
+  /* ============ PROJECTS ============ */
+  function renderProjectList(){
+    const list = $("#projectList");
+    const ids = Object.keys(state.projects).sort((a,b)=> state.projects[b].updatedAt - state.projects[a].updatedAt);
+    list.innerHTML = ids.map(id => {
+      const p = state.projects[id];
+      const active = id === state.currentId;
+      const d = new Date(p.updatedAt);
+      return `<div class="list-row ${active?'active':''}" data-prj="${id}">
+        <div class="lr-main">
+          <div class="lr-title">${esc(p.name)}</div>
+          <div class="lr-sub">${p.rooms.length} rooms · ${p.photos.length} photos · ${d.toLocaleDateString()}</div>
+        </div>
+        ${active?'<span class="tag-pill" style="color:var(--brand)">Active</span>':''}
+      </div>`;
+    }).join("");
+    $$(".list-row", list).forEach(r => r.addEventListener("click", () => {
+      state.currentId = r.dataset.prj; saveState();
+      closeSheet("projects"); fullRefresh(); toast("Switched project");
+    }));
+  }
+  $("#newProjectBtn").addEventListener("click", () => {
+    promptInput("New Project", "Property name / address", "", (val) => {
+      createProject(val || "New Project"); saveState();
+      closeSheet("projects"); fullRefresh(); showScreen("estimate");
+    });
+  });
+
+  /* generic prompt */
+  let promptCb = null;
+  function promptInput(title, placeholder, value, cb){
+    $("#promptTitle").textContent = title;
+    $("#promptInput").placeholder = placeholder || "";
+    $("#promptInput").value = value || "";
+    promptCb = cb; openSheet("prompt");
+    setTimeout(()=> $("#promptInput").focus(), 250);
+  }
+  $("#promptConfirm").addEventListener("click", () => {
+    const v = $("#promptInput").value.trim();
+    closeSheet("prompt"); if (promptCb) promptCb(v); promptCb = null;
+  });
+
+  /* ============ MENU SHEET ============ */
+  function prepMenu(){
+    $("#projectNotes").value = currentProject().notes || "";
+  }
+  $("#projectNotes").addEventListener("input", (e) => { currentProject().notes = e.target.value; saveState(); });
+  $("#renameProjectBtn").addEventListener("click", () => {
+    const p = currentProject();
+    promptInput("Rename Project", "Project name", p.name, (val) => {
+      if (val){ p.name = val; saveState(); refreshBar(); toast("Renamed"); }
+    });
+  });
+  $("#deleteProjectBtn").addEventListener("click", () => {
+    const p = currentProject();
+    if (!confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
+    delete state.projects[state.currentId];
+    const ids = Object.keys(state.projects);
+    if (ids.length) state.currentId = ids[0]; else createProject("123 Main St");
+    saveState(); closeAllSheets(); fullRefresh(); toast("Project deleted");
+  });
+  $("#openPricesBtn").addEventListener("click", () => { closeSheet("menu"); openSheet("prices"); });
+
+  function fullRefresh(){ refreshBar(); renderRooms(); renderPhotos(); }
+  </script>
+  <script>
+  'use strict';
+  /* ============ PHOTOS ============ */
+
+  // Downscale a captured image to keep localStorage small and export light.
+  function fileToDataUrl(file, maxDim=1280, quality=0.72){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          let { width:w, height:h } = img;
+          const scale = Math.min(1, maxDim / Math.max(w, h));
+          w = Math.round(w*scale); h = Math.round(h*scale);
+          const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+          cv.getContext("2d").drawImage(img, 0, 0, w, h);
+          resolve(cv.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = reject; img.src = reader.result;
+      };
+      reader.onerror = reject; reader.readAsDataURL(file);
+    });
+  }
+
+  $("#cameraInput").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []); if (!files.length) return;
+    const p = currentProject();
+    toast("Adding photo" + (files.length>1?"s":"") + "…");
+    for (const file of files){
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        p.photos.push({ id: uid("ph"), dataUrl, serial: "", ts: Date.now() });
+        saveState(); renderPhotos(); refreshBar();
+      } catch (err){ console.warn(err); toast("Could not add photo","err"); }
+    }
+    e.target.value = "";
+  });
+
+  function renderPhotos(){
+    const p = currentProject();
+    const grid = $("#photoGrid"), empty = $("#photoEmpty");
+    if (!p.photos.length){ grid.innerHTML = ""; empty.style.display = "block"; return; }
+    empty.style.display = "none";
+    grid.innerHTML = p.photos.map(ph => {
+      const time = new Date(ph.ts).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+      const serialHtml = ph.serial ? esc(ph.serial) : `<span class="photo-serial empty">Tap to add serial #</span>`;
+      return `<div class="photo-card" data-ph="${ph.id}">
+        ${ph.serial?'<span class="photo-badge">S/N</span>':''}
+        <button class="photo-del" data-delph="${ph.id}" aria-label="Delete photo">✕</button>
+        <img src="${ph.dataUrl}" alt="walkthrough photo" />
+        <div class="photo-info">
+          <div class="photo-serial" data-editserial="${ph.id}">${serialHtml}</div>
+          <div class="photo-time">${time}</div>
+        </div>
+      </div>`;
+    }).join("");
+    $$("[data-delph]", grid).forEach(b => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = b.dataset.delph;
+      p.photos = p.photos.filter(x => x.id !== id);
+      saveState(); renderPhotos(); refreshBar();
+    }));
+    $$("[data-editserial]", grid).forEach(el => el.addEventListener("click", () => {
+      const ph = p.photos.find(x => x.id === el.dataset.editserial); if (!ph) return;
+      promptInput("Serial Number", "Enter serial / model #", ph.serial, (val) => {
+        ph.serial = val; saveState(); renderPhotos();
+      });
+    }));
+  }
+
+  /* ============ DEAL ANALYZER (creative addition) ============ */
+  function projectRepairTotal(){
+    const p = currentProject(); let total = 0;
+    p.rooms.forEach(room => ROOM_TYPES[room.type].groups.forEach(gid => {
+      const gs = groupState(p, room.iid, gid);
+      visibleItems(gid, gs).forEach(d => {
+        const st = gs.items[d.id] || {};
+        if (st.on) total += (st.qty!=null?st.qty:1) * priceOf(p, d);
+      });
+    }));
+    return total;
+  }
+  ["dealArv","dealPrice","dealMonths","dealCarry","dealSellPct"].forEach(id => {
+    document.addEventListener("input", (e) => { if (e.target && e.target.id === id) { saveDeal(); renderDeal(); } });
+  });
+  function saveDeal(){
+    const p = currentProject();
+    p.deal = {
+      arv: $("#dealArv").value, price: $("#dealPrice").value,
+      months: $("#dealMonths").value, carry: $("#dealCarry").value, sellPct: $("#dealSellPct").value
+    };
+    saveState();
+  }
+  function renderDeal(){
+    const p = currentProject(); const d = p.deal || {};
+    if ($("#dealArv") && document.activeElement.id !== "dealArv") $("#dealArv").value = d.arv || "";
+    if (document.activeElement.id !== "dealPrice") $("#dealPrice").value = d.price || "";
+    if (document.activeElement.id !== "dealMonths") $("#dealMonths").value = d.months ?? 4;
+    if (document.activeElement.id !== "dealCarry") $("#dealCarry").value = d.carry ?? 1200;
+    if (document.activeElement.id !== "dealSellPct") $("#dealSellPct").value = d.sellPct ?? 8;
+
+    const arv = parseFloat($("#dealArv").value) || 0;
+    const price = parseFloat($("#dealPrice").value) || 0;
+    const months = parseFloat($("#dealMonths").value) || 0;
+    const carry = parseFloat($("#dealCarry").value) || 0;
+    const sellPct = parseFloat($("#dealSellPct").value) || 0;
+    const repair = projectRepairTotal();
+
+    $("#mRepair").textContent = fmtMoney(repair);
+    // 70% rule: MAO = ARV*0.70 - repairs
+    const mao = arv * 0.70 - repair;
+    $("#mMao").textContent = arv ? fmtMoney(Math.max(0, mao)) : "$0";
+
+    const holding = months * carry;
+    const selling = arv * (sellPct/100);
+    const totalCost = price + repair + holding + selling;
+    const profit = arv - totalCost;
+    const roi = totalCost > 0 ? (profit / totalCost * 100) : 0;
+
+    const pc = $("#mProfitCard"), rcc = $("#mRoiCard");
+    pc.className = "metric " + (profit >= 0 ? "good" : "bad");
+    rcc.className = "metric " + (roi >= 15 ? "good" : roi >= 0 ? "" : "bad");
+    $("#mProfit").textContent = arv ? fmtMoney(profit) : "$0";
+    $("#mRoi").textContent = arv ? roi.toFixed(1) + "%" : "0%";
+
+    const v = $("#dealVerdict");
+    if (!arv){ v.className = "verdict"; v.textContent = "Enter ARV to analyze"; }
+    else if (price <= mao && profit > 0){ v.className = "verdict go"; v.textContent = `✓ Strong deal — offer at or below ${fmtMoney(Math.max(0,mao))}`; }
+    else if (profit > 0){ v.className = "verdict caution"; v.textContent = `⚠ Thin margin — above the 70% rule price`; }
+    else { v.className = "verdict stop"; v.textContent = `✕ Loses money at this price`; }
+
+    $("#dealBreakdown").innerHTML = `
+      <div class="bd-row"><span>After Repair Value</span><span>${fmtMoney(arv)}</span></div>
+      <div class="bd-row"><span>− Purchase price</span><span>${fmtMoney(price)}</span></div>
+      <div class="bd-row"><span>− Repairs (from estimate)</span><span>${fmtMoney(repair)}</span></div>
+      <div class="bd-row"><span>− Holding (${months} mo × ${fmtMoney(carry)})</span><span>${fmtMoney(holding)}</span></div>
+      <div class="bd-row"><span>− Selling costs (${sellPct}%)</span><span>${fmtMoney(selling)}</span></div>
+      <div class="bd-row total"><span>= Estimated net profit</span><span>${fmtMoney(profit)}</span></div>`;
+  }
+
+  /* ============ PRICING (global) ============ */
+  function renderPriceList(filter=""){
+    const list = $("#priceList");
+    const q = filter.trim().toLowerCase();
+    const rows = DEFAULT_ITEMS.filter(([id,name]) => !q || name.toLowerCase().includes(q) || id.includes(q));
+    list.innerHTML = rows.map(([id,name,cost,unit]) => {
+      const cur = globalPrices[id] != null ? globalPrices[id] : cost;
+      const changed = globalPrices[id] != null && globalPrices[id] !== cost;
+      return `<div class="price-row ${changed?'pr-changed':''}">
+        <div class="pr-name">${esc(name)}<small>${id} · / ${esc(unit)} · std ${fmtPrice(cost)}</small></div>
+        <input type="number" inputmode="decimal" value="${cur}" data-price="${id}" />
+      </div>`;
+    }).join("") || `<p class="text-muted" style="text-align:center;padding:20px;">No items match.</p>`;
+    $$("[data-price]", list).forEach(inp => inp.addEventListener("change", () => {
+      const id = inp.dataset.price; const v = parseFloat(inp.value);
+      const def = CATALOG[id];
+      if (isNaN(v) || v < 0){ inp.value = globalPrices[id] ?? def.cost; return; }
+      if (v === def.cost) delete globalPrices[id]; else globalPrices[id] = v;
+      savePrices(); renderRooms();
+      inp.closest(".price-row").classList.toggle("pr-changed", globalPrices[id] != null);
+    }));
+  }
+  $("#priceSearch").addEventListener("input", (e) => renderPriceList(e.target.value));
+  $("#resetPricesBtn").addEventListener("click", () => {
+    if (!confirm("Reset all global prices to the standard Spark Homes list?")) return;
+    globalPrices = {}; savePrices(); renderPriceList($("#priceSearch").value); renderRooms(); toast("Prices reset to default");
+  });
+  $("#exportCsvBtn").addEventListener("click", () => {
+    let csv = "id,name,cost,unit\n";
+    DEFAULT_ITEMS.forEach(([id,name,cost,unit]) => {
+      const c = globalPrices[id] != null ? globalPrices[id] : cost;
+      csv += `${id},"${name.replace(/"/g,'""')}",${c},"${unit}"\n`;
+    });
+    downloadBlob(new Blob([csv], {type:"text/csv"}), "spark-prices.csv");
+    toast("CSV exported");
+  });
+  $("#csvImport").addEventListener("change", (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const lines = reader.result.split(/\r?\n/).filter(Boolean);
+        let n = 0;
+        lines.slice(1).forEach(line => {
+          const m = line.match(/^([^,]+),/); if (!m) return;
+          const id = m[1].trim().replace(/^"|"$/g,"");
+          // grab cost: 3rd CSV column (handle quoted name w/ commas)
+          const parts = parseCsvLine(line);
+          if (parts.length >= 3 && CATALOG[id]){
+            const cost = parseFloat(parts[2]);
+            if (!isNaN(cost)){ if (cost === CATALOG[id].cost) delete globalPrices[id]; else globalPrices[id] = cost; n++; }
+          }
+        });
+        savePrices(); renderPriceList($("#priceSearch").value); renderRooms();
+        toast(`Updated ${n} prices from CSV`, "ok");
+      } catch (err){ toast("Could not parse CSV","err"); }
+    };
+    reader.readAsText(file); e.target.value = "";
+  });
+  function parseCsvLine(line){
+    const out = []; let cur = "", inQ = false;
+    for (let i=0;i<line.length;i++){
+      const ch = line[i];
+      if (ch === '"'){ if (inQ && line[i+1] === '"'){ cur+='"'; i++; } else inQ = !inQ; }
+      else if (ch === ',' && !inQ){ out.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    out.push(cur); return out.map(s => s.trim());
+  }
+
+  function downloadBlob(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+  }
+  </script>
+  <script>
+  'use strict';
+  /* ============ AI SMART ADD (on-device semantic search) ============ */
+
+  const SECTION_OF = { ig:"Interior / General", kt:"Kitchen", ba:"Bathrooms", as:"Systems & Structure", ex:"Exterior" };
+  const SMART_INDEX = DEFAULT_ITEMS.map(([id,name,cost,unit]) => ({ id, name, unit, section: SECTION_OF[id.slice(0,2)] || "Other" }));
+  const SMART_PRIORITY = ["interior","kitchen","bathroom","systems","exterior","living","bedroom"];
+
+  // Which room type + group a given item should land in when added via Smart Add.
+  function canonicalTarget(itemId){
+    for (const type of SMART_PRIORITY){
+      const gid = ROOM_TYPES[type].groups.find(g => GROUPS[g].items.includes(itemId));
+      if (gid) return { type, gid };
+    }
+    return null;
+  }
+  function ensureRoom(type){
+    const p = currentProject();
+    let room = p.rooms.find(r => r.type === type);
+    if (!room){ room = newRoomFor(p, type); p.rooms.push(room); }
+    return room.iid;
+  }
+  function smartAddItem(itemId){
+    const tgt = canonicalTarget(itemId); if (!tgt) return false;
+    const p = currentProject();
+    const iid = ensureRoom(tgt.type);
+    const gs = groupState(p, iid, tgt.gid);
+    gs.noAction = false;
+    if (!gs.items[itemId]) gs.items[itemId] = {};
+    gs.items[itemId].on = true;
+    if (gs.items[itemId].qty == null) gs.items[itemId].qty = 1;
+    saveState(); refreshBar(); renderRooms();
+    return true;
+  }
+
+  /* ---- model loading (lazy, with keyword fallback) ---- */
+  let smartModel = null, smartEmb = null, smartLoadPromise = null;
+  function injectScript(src){
+    return new Promise((res, rej) => {
+      const s = document.createElement("script"); s.src = src; s.async = true;
+      s.onload = res; s.onerror = () => rej(new Error("load failed " + src));
+      document.head.appendChild(s);
+    });
+  }
+  function normVec(v){ let n = 0; for (let i=0;i<v.length;i++) n += v[i]*v[i]; n = Math.sqrt(n)||1; return v.map(x => x/n); }
+  function cosine(a,b){ let d = 0; for (let i=0;i<a.length;i++) d += a[i]*b[i]; return d; }
+
+  function ensureSmartModel(){
+    if (smartModel) return Promise.resolve(true);
+    if (smartLoadPromise) return smartLoadPromise;
+    setSmartStatus('<span class="spinner" style="border-top-color:var(--brand)"></span> Loading on-device AI model… (first time only)');
+    smartLoadPromise = (async () => {
+      try {
+        if (typeof tf === "undefined") await injectScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js");
+        if (typeof use === "undefined") await injectScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/universal-sentence-encoder@1.3.3/dist/universal-sentence-encoder.min.js");
+        smartModel = await use.load();
+        const emb = await smartModel.embed(SMART_INDEX.map(x => x.name));
+        const arr = await emb.array(); emb.dispose();
+        smartEmb = arr.map(normVec);
+        setSmartStatus('<span style="color:var(--ok)">● AI ready</span> — semantic matching on');
+        return true;
+      } catch (e){
+        console.warn("AI model unavailable, using keyword search", e);
+        setSmartStatus("Offline / model unavailable — using keyword search.");
+        return false;
+      }
+    })();
+    return smartLoadPromise;
+  }
+  function setSmartStatus(html){ const el = $("#smartStatus"); if (el) el.innerHTML = html; }
+
+  /* ---- scoring ---- */
+  function keywordScore(query, name){
+    const q = query.toLowerCase(), n = name.toLowerCase();
+    if (n.includes(q)) return 1;
+    const toks = q.split(/[^a-z0-9]+/).filter(t => t.length > 1);
+    if (!toks.length) return 0;
+    let hit = 0; toks.forEach(t => { if (n.includes(t)) hit++; });
+    return hit / toks.length * 0.9;
+  }
+  async function smartScores(query){
+    if (smartModel && smartEmb){
+      const emb = await smartModel.embed([query]);
+      const qv = normVec((await emb.array())[0]); emb.dispose();
+      return SMART_INDEX.map((it,i) => ({ it, s: 0.7*cosine(qv, smartEmb[i]) + 0.3*keywordScore(query, it.name) }));
+    }
+    return SMART_INDEX.map(it => ({ it, s: keywordScore(query, it.name) }));
+  }
+
+  /* ---- search + render ---- */
+  let smartSeq = 0, smartDebounce = null;
+  function runSmartSearch(){
+    const query = $("#smartInput").value.trim();
+    clearTimeout(smartDebounce);
+    if (!query){ $("#smartResults").innerHTML = ""; return; }
+    smartDebounce = setTimeout(async () => {
+      const seq = ++smartSeq;
+      const scored = await smartScores(query);
+      if (seq !== smartSeq) return; // a newer query superseded this one
+      scored.sort((a,b) => b.s - a.s);
+      const top = scored.filter(x => x.s > 0.12).slice(0, 6);
+      renderSmartResults(top);
+    }, 250);
+  }
+  function renderSmartResults(list){
+    const box = $("#smartResults");
+    if (!list.length){ box.innerHTML = `<p class="text-muted" style="text-align:center;padding:16px;font-size:13px;">No close matches — try different words.</p>`; return; }
+    const top = list[0].s || 1;
+    box.innerHTML = list.map(({it,s}) => {
+      const pct = Math.max(35, Math.round(s/top*100));
+      const price = effectivePrice(currentProject(), it.id, null);
+      return `<div class="smart-res" data-sadd="${it.id}">
+        <div class="sr-main">
+          <div class="sr-name">${esc(it.name)}</div>
+          <div class="sr-sub">${esc(it.section)} · ${fmtPrice(price)} / ${esc(it.unit)} · <span class="sr-match">${pct}% match</span></div>
+        </div>
+        <button class="sr-add" aria-label="Add ${esc(it.name)}">+</button>
+      </div>`;
+    }).join("");
+    $$("[data-sadd]", box).forEach(row => row.addEventListener("click", () => {
+      const id = row.dataset.sadd;
+      if (row.classList.contains("added")) return;
+      if (smartAddItem(id)){
+        row.classList.add("added");
+        row.querySelector(".sr-add").textContent = "✓";
+        toast("Added: " + CATALOG[id].name, "ok");
+      }
+    }));
+  }
+
+  /* ---- wire up ---- */
+  const SMART_CHIPS = ["Furnace is dead","Carpet ruined","Roof is leaking","Cabinets are shot","Full bathroom gut","Old electrical panel","AC unit outside broken"];
+  let smartWired = false;
+  function openSmartAdd(){
+    openSheet("smartadd");
+    if (!smartWired){
+      smartWired = true;
+      $("#smartChips").innerHTML = SMART_CHIPS.map(c => `<button class="smart-chip">${esc(c)}</button>`).join("");
+      $$("#smartChips .smart-chip").forEach(b => b.addEventListener("click", () => {
+        $("#smartInput").value = b.textContent; runSmartSearch();
+      }));
+      $("#smartInput").addEventListener("input", runSmartSearch);
+    }
+    $("#smartResults").innerHTML = "";
+    ensureSmartModel(); // background; keyword search works immediately meanwhile
+    setTimeout(() => $("#smartInput").focus(), 250);
+  }
+  $("#smartAddBtn").addEventListener("click", openSmartAdd);
+  </script>
+  <script>
+  'use strict';
+  /* ============ EXPORT: ZIP (Excel + photos) ============ */
+
+  function sanitize(s){ return String(s).replace(/[^a-z0-9_\- ]/gi,"").trim().replace(/\s+/g,"_") || "project"; }
+
+  function buildEstimateRows(){
+    const p = currentProject();
+    const today = new Date().toLocaleDateString();
+    const rows = [];
+    rows.push(["Spark Homes — Repair Estimate"]);
+    rows.push(["Project", p.name]);
+    rows.push(["Date", today]);
+    if (p.notes) rows.push(["Notes", p.notes]);
+    rows.push([]);
+    rows.push(["Room / Section","Group","Line Item","Qty","Unit","Unit Cost","Line Total"]);
+    let grand = 0;
+    p.rooms.forEach(room => {
+      ROOM_TYPES[room.type].groups.forEach(gid => {
+        const gs = groupState(p, room.iid, gid);
+        visibleItems(gid, gs).forEach(d => {
+          const st = gs.items[d.id] || {};
+          if (!st.on) return;
+          const qty = st.qty!=null?st.qty:1;
+          const price = priceOf(p, d);
+          const line = qty * price; grand += line;
+          rows.push([room.label, GROUPS[gid].name, d.name, qty, d.unit, price, line]);
+        });
+      });
+    });
+    rows.push([]);
+    rows.push(["","","","","","GRAND TOTAL", grand]);
+    return { rows, grand };
+  }
+
+  function buildSummaryRows(grand){
+    const p = currentProject(); const d = p.deal || {};
+    const arv = parseFloat(d.arv)||0, price = parseFloat(d.price)||0;
+    const months = parseFloat(d.months)||0, carry = parseFloat(d.carry)||0, sellPct = parseFloat(d.sellPct)||0;
+    const holding = months*carry, selling = arv*(sellPct/100);
+    const profit = arv - (price + grand + holding + selling);
+    const mao = arv*0.70 - grand;
+    let totalGroups=0, doneGroups=0;
+    p.rooms.forEach(r => ROOM_TYPES[r.type].groups.forEach(gid => {
+      totalGroups++; const gs = groupState(p,r.iid,gid);
+      if (gs.noAction || visibleItems(gid,gs).some(d=> (gs.items[d.id]||{}).on)) doneGroups++;
+    }));
+    return [
+      ["Walkthrough Summary"],
+      ["Rooms", p.rooms.length],
+      ["Groups reviewed", `${doneGroups} / ${totalGroups}`],
+      ["Photos attached", p.photos.length],
+      [],
+      ["Deal Analysis"],
+      ["After Repair Value (ARV)", arv],
+      ["Purchase price", price],
+      ["Repairs", grand],
+      ["Holding costs", holding],
+      ["Selling costs", selling],
+      ["Estimated net profit", profit],
+      ["Max Allowable Offer (70% rule)", Math.max(0,mao)],
+      [],
+      ["Equipment Serials (from photos)"],
+      ...p.photos.filter(ph=>ph.serial).map(ph => ["Serial", ph.serial])
+    ];
+  }
+
+  async function exportProject(){
+    const p = currentProject();
+    if (typeof XLSX === "undefined" || typeof JSZip === "undefined"){
+      toast("Export libraries still loading — try again in a moment","err"); return;
+    }
+    const btn = $("#exportBtn"); const orig = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner"></span> Building ZIP…'; btn.disabled = true;
+    try {
+      const { rows, grand } = buildEstimateRows();
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws["!cols"] = [{wch:20},{wch:20},{wch:42},{wch:7},{wch:14},{wch:12},{wch:13}];
+      // currency format on the unit-cost + line-total columns wherever numeric
+      for (let r = 0; r < rows.length; r++){
+        ["F","G"].forEach(col => { const c = ws[col+(r+1)]; if (c && typeof c.v === "number") c.z = '"$"#,##0.00'; });
+      }
+      XLSX.utils.book_append_sheet(wb, ws, "Estimate");
+      const sumWs = XLSX.utils.aoa_to_sheet(buildSummaryRows(grand));
+      sumWs["!cols"] = [{wch:32},{wch:18}];
+      XLSX.utils.book_append_sheet(wb, sumWs, "Summary");
+      const wbout = XLSX.write(wb, { bookType:"xlsx", type:"array" });
+
+      const zip = new JSZip();
+      const base = sanitize(p.name);
+      zip.file(`${base}_Estimate.xlsx`, wbout);
+      if (p.photos.length){
+        const folder = zip.folder("photos");
+        p.photos.forEach((ph, i) => {
+          const b64 = ph.dataUrl.split(",")[1];
+          const sn = ph.serial ? "_" + sanitize(ph.serial) : "";
+          folder.file(`photo_${String(i+1).padStart(2,"0")}${sn}.jpg`, b64, { base64: true });
+        });
+      }
+      const blob = await zip.generateAsync({ type:"blob" });
+      const stamp = new Date().toISOString().slice(0,10);
+      downloadBlob(blob, `SparkHomes_${base}_${stamp}.zip`);
+      toast("Estimate exported ✓","ok");
+    } catch (err){ console.error(err); toast("Export failed","err"); }
+    finally { btn.innerHTML = orig; btn.disabled = false; }
+  }
+  $("#exportBtn").addEventListener("click", exportProject);
+
+  /* ============ PWA + INIT ============ */
+  let deferredPrompt = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault(); deferredPrompt = e;
+    const el = $("#installState");
+    if (el){ el.innerHTML = '<a href="#" id="installLink" style="color:var(--brand)">Install app</a>'; }
+  });
+  document.addEventListener("click", async (e) => {
+    if (e.target && e.target.id === "installLink"){
+      e.preventDefault();
+      if (deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt = null; }
+    }
+  });
+  window.addEventListener("appinstalled", () => { const el = $("#installState"); if (el) el.textContent = "Installed ✓"; });
+
+  if ("serviceWorker" in navigator){
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(err => console.warn("SW reg failed", err));
+    });
+  }
+
+  /* ---- boot ---- */
+  function init(){
+    loadAll();
+    refreshBar();
+    renderRooms();
+    renderPhotos();
+    renderDeal();
+    const el = $("#installState");
+    if (el && window.matchMedia("(display-mode: standalone)").matches) el.textContent = "Running installed ✓";
+    else if (el && !el.innerHTML) el.textContent = "Add to Home Screen to install";
+  }
+  init();
+  </script>
+</body>
+</html>

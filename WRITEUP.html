@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Spark Homes Estimator — Writeup</title>
+<style>
+  @page { size: letter; margin: 0.6in; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1a2233; line-height: 1.42; max-width: 720px; margin: 24px auto; padding: 0 16px; font-size: 13px; }
+  h1 { font-size: 20px; margin: 0 0 2px; color: #0b1220; }
+  .sub { color: #e0521b; font-weight: 700; font-size: 12px; letter-spacing: .5px; text-transform: uppercase; margin-bottom: 14px; }
+  h2 { font-size: 13.5px; color: #e0521b; margin: 16px 0 4px; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+  p { margin: 4px 0 8px; }
+  ul { margin: 4px 0 8px; padding-left: 18px; }
+  li { margin: 2px 0; }
+  .muted { color: #667; }
+  b { color: #0b1220; }
+  .print-note { background:#fff6f0; border:1px solid #ffd9c2; border-radius:8px; padding:8px 11px; font-size:11.5px; color:#8a4a26; margin-bottom:16px; }
+  @media print { .print-note { display:none; } }
+</style>
+</head>
+<body>
+  <div class="print-note">Open this file in a browser and use <b>Print → Save as PDF</b> to produce the one-page PDF deliverable.</div>
+
+  <h1>Spark Homes — Repair Cost Estimator</h1>
+  <div class="sub">One-page writeup</div>
+
+  <h2>1. Most interesting design / UX decision</h2>
+  <p>
+    I built the app around a <b>flexible data model</b> instead of fixed screens. A
+    <b>catalog</b> of the 108 priced items, a set of <b>group templates</b> (the 19 reference
+    groups), and <b>room types</b> that reference those groups. Rooms are instances an agent adds
+    or removes on the fly, and bathrooms/bedrooms/living areas auto-number. This directly serves the
+    brief's most-emphasized requirement, that every house is different, and it kept the code small.
+  </p>
+  <p>
+    The other decision I care about: totals and the progress bar are <b>patched into the DOM in
+    place</b> on every quantity or checkbox change rather than re-rendering the list. On a phone in
+    a real walkthrough, that means no flicker and no lost keyboard focus while typing a quantity.
+    The interface is a dark, high-contrast, thumb-reachable layout (bottom nav, big tap targets,
+    16px inputs to stop iOS zoom) tuned for a dim, empty house rather than a screenshot.
+  </p>
+
+  <h2>2. What is broken or fragile</h2>
+  <ul>
+    <li><b>AI Smart Add depends on a model download.</b> The TensorFlow.js sentence encoder
+      (~25&nbsp;MB) loads on first use and is then cached for offline use. Until it loads, Smart Add
+      falls back to keyword matching, so it degrades gracefully but the first semantic search needs
+      a network connection. Embedding quality on very short item names is good but not perfect.</li>
+    <li><b>localStorage is the only store.</b> Photos are downscaled to ~1280px JPEGs to fit, but a
+      project with dozens of photos can approach the browser's ~5MB quota. A production version
+      would move photos to IndexedDB.</li>
+    <li><b>Item→group mapping is my interpretation.</b> The CSV has no group column, so I assigned
+      each item to the most sensible group and added three helper groups (General/Misc, Lighting,
+      Closet) to keep every item reachable and to decouple Living/Common from Interior as the brief
+      requested.</li>
+    <li>No multi-device sync (by design — fully offline, no backend).</li>
+  </ul>
+
+  <h2>3. Creative addition — Deal Analyzer + AI Smart Add</h2>
+  <p>
+    The estimate answers "what will repairs cost." The job is really "should we make this offer?"
+    The <b>Deal Analyzer</b> tab pulls the live repair total, applies the investor
+    <b>70% rule</b> to suggest a Maximum Allowable Offer, and projects net profit and return on cost
+    after holding and selling costs, ending in a clear Go / Caution / Stop verdict. It converts the
+    agent's checklist into the actual decision they are standing in the house to make, reusing data
+    already captured so it costs zero extra input.
+  </p>
+  <p>
+    My <b>AI feature is Smart Add</b>: the agent types a problem in plain English ("the AC outside
+    is dead", "carpet is ruined") and an <b>on-device neural model</b> (TensorFlow.js Universal
+    Sentence Encoder) embeds the phrase and ranks the closest of all 108 line items, then one tap
+    drops each into the correct room and group. It is genuine <b>semantic</b> matching, not keyword
+    search, so "AC unit outside" surfaces <i>Condensing Unit</i> even though those words never
+    appear in the item name. I deliberately chose this over photo OCR / object detection: agents
+    work in <b>empty</b> distressed houses where a vision model often has little to see, whereas
+    plain-language lookup speeds up the core task in any house. The model lazy-loads on first use
+    (keeping startup fast) and falls back to keyword search when offline, so it never feels broken.
+  </p>
+
+  <h2>4. What I'd ship next with two more days</h2>
+  <ul>
+    <li>Move photo storage to <b>IndexedDB</b> and add per-line-item photo attachment.</li>
+    <li><b>Project comparison</b> view and a duplicate-project / template feature for similar homes.</li>
+    <li>Square-footage helper that auto-fills quantities for area-based items (paint, flooring).</li>
+    <li>Sharable read-only estimate link / PDF export alongside the Excel ZIP.</li>
+    <li>Voice input into AI Smart Add, and pre-bundling a smaller quantized embedding model so the
+      first semantic search works without any network.</li>
+  </ul>
+
+  <h2>Role of AI tools</h2>
+  <p class="muted">
+    I used an AI coding assistant to accelerate scaffolding, the CSV-to-data-model transcription,
+    and boilerplate (service worker, export plumbing). All architecture decisions, the data model,
+    the UX, the Deal Analyzer concept, the AI Smart Add design, and final review/testing were mine;
+    AI was a pair-programmer, not the author of the design.
+  </p>
+</body>
+</html>
