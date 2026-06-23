@@ -1,0 +1,31 @@
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Logs / temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tmp
+_test_*.html
+
+# Dependencies (not used by this app, but safe to ignore)
+node_modules/
+
+# Environment / secrets
+.env
+.env.local
+*.pem
+
+# OS / misc
+Thumbs.db
+ehthumbs.db
