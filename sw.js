@@ -1,4 +1,4 @@
-/* Spark Homes Repair Estimator - Service Worker
+/* Homes Repair Estimator - Service Worker
    Offline-first: pre-caches the app shell and the export libraries so the tool
    keeps working in a house with no signal. The TensorFlow.js model used by AI
    Smart Add is cached on demand by the runtime fetch handler below. */

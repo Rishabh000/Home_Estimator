@@ -1,7 +1,7 @@
 {
-  "name": "Spark Homes Repair Estimator",
-  "short_name": "Spark Estimate",
-  "description": "Mobile-first repair cost estimator for Spark Homes acquisition agents.",
+  "name": "Homes Repair Estimator",
+  "short_name": "Estimate",
+  "description": "Mobile-first repair cost estimator for Homes acquisition agents.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

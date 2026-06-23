@@ -1,6 +1,6 @@
-# Spark Homes — Repair Estimator (PWA)
+# Homes — Repair Estimator
 
-A mobile-first, offline-capable repair cost estimator for Spark Homes' acquisition team.
+A mobile-first, offline-capable repair cost estimator.
 Agents walk a property on their phone, check off needed repairs room by room, snap photos
 of equipment serial plates, and export a ZIP (Excel breakdown + photos) before submitting an offer.
 
@@ -21,8 +21,6 @@ python3 -m http.server 8080
 npx serve .
 ```
 
-Then open **http://localhost:8080** and, for the real experience, open it on your phone
-(same network) or deploy the folder to any static host (GitHub Pages, Netlify, Vercel, S3).
 
 To **install as a PWA**: open in Chrome (Android) → menu → *Add to Home screen*, or
 Safari (iOS) → Share → *Add to Home Screen*. It launches standalone and works fully offline
@@ -70,7 +68,7 @@ Counted per group across every room instance — a group is complete when any it
 A dedicated tab that turns the repair estimate into a go/no-go decision on the spot. It pulls the
 live repair total, applies the investor **70% rule** to suggest a Maximum Allowable Offer, and
 computes estimated net profit and return on cost after holding and selling costs. An agent
-standing in the house immediately knows whether the numbers work. See `WRITEUP.html` for why.
+standing in the house immediately knows whether the numbers work.
 
 ## AI feature — Smart Add (on-device semantic search)
 Tap **✨ AI Smart Add** and describe a problem in plain English ("the AC outside is dead",
@@ -94,8 +92,3 @@ whereas plain-language item lookup speeds up the core task in any house.
 - [TensorFlow.js + Universal Sentence Encoder](https://www.tensorflow.org/js) — on-device semantic
   search for AI Smart Add (lazy-loaded on first use)
 
-No frameworks — vanilla HTML/CSS/JS. CSS is hand-written (no Tailwind) so the UI is fully
-self-contained and reliable offline.
-
-## Known limitations
-See `WRITEUP.html` ("what is fragile") for the honest list.

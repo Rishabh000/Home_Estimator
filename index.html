@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#0b1220" />
-  <meta name="description" content="Spark Homes mobile repair cost estimator" />
+  <meta name="description" content="Homes mobile repair cost estimator" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Spark Estimate" />
+  <meta name="apple-mobile-web-app-title" content=" Estimate" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" href="./icon.svg" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-  <title>Spark Homes — Repair Estimator</title>
+  <title>Homes — Repair Estimator</title>
 
   <!-- Export libraries (cached by the service worker for offline use).
        The TensorFlow.js model for AI Smart Add is loaded lazily on first use so
@@ -309,7 +309,7 @@
   <!-- ============ TOP APP BAR ============ -->
   <header class="appbar">
     <div class="appbar-row">
-      <img src="./icon.svg" class="brand-mark" alt="Spark Homes" />
+      <img src="./icon.svg" class="brand-mark" alt="Homes" />
       <div class="appbar-titles" id="projectSwitch" role="button">
         <div class="appbar-project"><span id="barProjectName">Loading…</span><span class="chev">▾</span></div>
         <div class="appbar-sub" id="barProjectSub">Tap to switch project</div>
@@ -452,7 +452,7 @@
     <div class="divider"></div>
     <button class="btn btn-danger btn-block" id="deleteProjectBtn">🗑 Delete This Project</button>
     <p class="text-muted" style="font-size:11.5px;text-align:center;margin-top:16px;">
-      Spark Homes Repair Estimator · works offline · <span id="installState"></span>
+      Homes Repair Estimator <span id="installState"></span>
     </p>
   </section>
 
@@ -521,7 +521,7 @@
   <script>
   'use strict';
   /* ============================================================
-     SPARK HOMES — REPAIR ESTIMATOR
+    HOMES — REPAIR ESTIMATOR
      Vanilla JS. Data-model driven so rooms/groups stay flexible.
      ============================================================ */
 
@@ -1360,7 +1360,7 @@
   }
   $("#priceSearch").addEventListener("input", (e) => renderPriceList(e.target.value));
   $("#resetPricesBtn").addEventListener("click", () => {
-    if (!confirm("Reset all global prices to the standard Spark Homes list?")) return;
+    if (!confirm("Reset all global prices to the standard Homes list?")) return;
     globalPrices = {}; savePrices(); renderPriceList($("#priceSearch").value); renderRooms(); toast("Prices reset to default");
   });
   $("#exportCsvBtn").addEventListener("click", () => {
@@ -1572,7 +1572,7 @@
     const p = currentProject();
     const today = new Date().toLocaleDateString();
     const rows = [];
-    rows.push(["Spark Homes — Repair Estimate"]);
+    rows.push(["Homes — Repair Estimate"]);
     rows.push(["Project", p.name]);
     rows.push(["Date", today]);
     if (p.notes) rows.push(["Notes", p.notes]);
